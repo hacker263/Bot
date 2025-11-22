@@ -131,16 +131,25 @@ class BotController {
       // Auth/General commands (work for all)
       if (['register', 'login', 'logout', 'verify', 'profile', 'help', 'owner', 'about', 'feedback', 'stats'].includes(command)) {
         logger.info(`→ Routing to authHandler: ${command}`);
-        result = await authHandler.handleAuthCommand(command, args, from, phoneNumber);
+        try {
+          result = await authHandler.handleAuthCommand(command, args, from, phoneNumber);
+          logger.info(`← authHandler returned: ${result ? 'result' : 'null'}`);
+        } catch (err) {
+          logger.error(`authHandler error: ${err.message}`);
+          result = { error: err.message };
+        }
       }
       
       // Admin commands
       else if (['admin', 'merchants', 'approve', 'reject', 'suspend', 'sales', 'logs', 'broadcast', 'stats', 'alerts'].includes(command)) {
+        logger.info(`→ Routing to adminHandler: ${command}`);
         // Check admin rights first
         try {
           await authMiddleware.requireAdmin(phoneNumber);
           result = await adminHandler.handleAdminCommand(command, args, from, phoneNumber);
+          logger.info(`← adminHandler returned: ${result ? 'result' : 'null'}`);
         } catch (error) {
+          logger.warn(`Admin check failed: ${error.message}`);
           result = { error: error.message };
         }
       }
@@ -149,10 +158,13 @@ class BotController {
       else if (['merchant', 'orders', 'products', 'store', 'analytics', 'dashboard', 'add-product', 'edit-product', 
                 'delete-product', 'accept', 'reject', 'update-status', 'store-status', 'store-hours', 
                 'store-profile', 'settings', 'performance', 'customers', 'feedback', 'boost', 'tips'].includes(command)) {
+        logger.info(`→ Routing to merchantHandler: ${command}`);
         try {
           await authMiddleware.requireMerchant(phoneNumber);
           result = await merchantHandler.handleMerchantCommand(command, args, from, phoneNumber);
+          logger.info(`← merchantHandler returned: ${result ? 'result' : 'null'}`);
         } catch (error) {
+          logger.warn(`Merchant check failed: ${error.message}`);
           result = { error: error.message };
         }
       }
@@ -161,17 +173,28 @@ class BotController {
       else if (['menu', 'm', 'search', 'categories', 'nearby', 'store', 'add', 'cart', 'c', 'remove',
                 'clear', 'checkout', 'pay', 'orders', 'reorder', 'track', 'status', 'rate', 'favorites',
                 'addresses', 'deals', 'trending', 'promo', 'featured'].includes(command)) {
-        result = await customerHandler.handleCustomerCommand(command, args, from, phoneNumber);
+        logger.info(`→ Routing to customerHandler: ${command}`);
+        try {
+          result = await customerHandler.handleCustomerCommand(command, args, from, phoneNumber);
+          logger.info(`← customerHandler returned: ${result ? 'result' : 'null'}`);
+        } catch (err) {
+          logger.error(`customerHandler error: ${err.message}`);
+          result = { error: err.message };
+        }
       }
       
       // Unknown command
       else {
+        logger.warn(`Unknown command: ${command}`);
         result = { error: constants.MESSAGES.UNKNOWN_COMMAND };
       }
 
       // Send result
       if (result) {
+        logger.info(`✅ Result received: ${typeof result} with keys: ${Object.keys(result).join(', ')}`);
         await this.sendCommandResponse(sock, from, result);
+      } else {
+        logger.warn(`⚠️  No result returned from handler for command: ${command}`);
       }
 
     } catch (error) {
