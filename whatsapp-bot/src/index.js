@@ -17,6 +17,7 @@ const { makeInMemoryStore } = require('@rodrigogs/baileys-store');
 const { Boom } = require('@hapi/boom');
 const chalk = require('chalk');
 const figlet = require('figlet');
+const qrcode = require('qrcode-terminal');
 const NodeCache = require('node-cache');
 const P = require('pino');
 const express = require('express');
