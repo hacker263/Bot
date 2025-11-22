@@ -10,10 +10,10 @@ const {
   useMultiFileAuthState,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
-  makeInMemoryStore,
   getContentType,
   Browsers
 } = require('@whiskeysockets/baileys');
+const { makeInMemoryStore } = require('@rodrigogs/baileys-store');
 const { Boom } = require('@hapi/boom');
 const chalk = require('chalk');
 const figlet = require('figlet');
@@ -23,6 +23,9 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 require('dotenv').config();
+
+// Import utilities
+const CommandParser = require('./utils/commandParser');
 
 // Import services
 const MessageService = require('./services/messageService');
@@ -64,6 +67,9 @@ class SmartWhatsAppBot {
   }
 
   initializeServices() {
+    // CommandParser is already a singleton instance
+    this.commandParser = CommandParser;
+    
     // These will be initialized after socket creation
     this.messageService = null;
     this.utilityCommandHandler = null;
@@ -302,9 +308,17 @@ class SmartWhatsAppBot {
    */
   async handleCommand(text, from, phoneNumber, cleanPhone, isGroup, message) {
     try {
-      const args = text.slice(this.prefix.length).trim().split(/\s+/);
-      const command = args[0]?.toLowerCase();
-      const params = args.slice(1);
+      // Parse command using CommandParser utility
+      const parsed = CommandParser.parseCommand(text);
+      if (!parsed) {
+        return await this.messageService.sendTextMessage(
+          from,
+          `❌ Invalid command format\nType ${this.prefix}menu for help`
+        );
+      }
+
+      const command = parsed.command;
+      const params = parsed.args;
 
       console.log(chalk.blue(`📝 Command: ${command}`), chalk.gray(`from ${cleanPhone}`));
 
