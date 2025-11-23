@@ -6,6 +6,7 @@
 const backendAPI = require('../api/backendAPI');
 const authMiddleware = require('../middlewares/auth');
 const cache = require('../database/cache');
+const databaseService = require('../database/service');
 const MessageFormatter = require('../utils/messageFormatter');
 const InteractiveMessageBuilder = require('../utils/interactiveMessageBuilder');
 const FlowManager = require('../utils/flowManager');
@@ -378,43 +379,62 @@ class CustomerHandler {
    * !checkout or !pay
    */
   async handleCheckoutCommand(phoneNumber, from) {
-    const cart = await cache.getUserCart(phoneNumber);
+    try {
+      const cart = await cache.getUserCart(phoneNumber);
 
-    if (!cart.items || cart.items.length === 0) {
-      return { message: `
-╔════════════════════════════════════════╗
-║ 🛒  CART IS EMPTY
-╠════════════════════════════════════════╣
-║
-║ Start shopping now:
-║ • !menu             (browse all items)
-║ • !search <item>    (search for items)
-║ • !categories       (view categories)
-║ • !deals            (see hot deals)
-║
-╚════════════════════════════════════════╝
-      ` };
+      if (!cart.items || cart.items.length === 0) {
+        return InteractiveMessageBuilder.createErrorCard(
+          'Cart is Empty',
+          ['Start shopping: !menu', 'Search items: !search <item>']
+        );
+      }
+
+      const session = await cache.getUserSession(phoneNumber);
+
+      // Prepare order data
+      const orderData = {
+        items: cart.items,
+        subtotal: cart.subtotal || cart.total,
+        total: cart.total,
+        status: 'pending',
+        payment_status: 'pending',
+      };
+
+      // Create order in database
+      const dbResult = await databaseService.createOrder(orderData);
+
+      if (!dbResult.success) {
+        return InteractiveMessageBuilder.createErrorCard(
+          'Checkout Failed',
+          [dbResult.error]
+        );
+      }
+
+      const order = dbResult.data;
+
+      // Sync cart to database then clear
+      await databaseService.syncCart(phoneNumber, cart);
+      await databaseService.clearCart(phoneNumber);
+      await cache.clearUserCart(phoneNumber);
+
+      logger.info(`Order created: ${order.order_number}`);
+
+      return InteractiveMessageBuilder.createSuccessCard(
+        '✅ Order Placed!',
+        `Order #${order.order_number}\nTotal: ZWL ${order.total.toFixed(2)}\nStatus: Pending confirmation`,
+        [
+          { text: '📦 Track Order', id: 'track_order' },
+          { text: '🏪 Continue Shopping', id: 'menu' }
+        ]
+      );
+    } catch (error) {
+      logger.error('Checkout error', error);
+      return InteractiveMessageBuilder.createErrorCard(
+        'Checkout Error',
+        [error.message]
+      );
     }
-
-    const session = await cache.getUserSession(phoneNumber);
-
-    // Create order in backend
-    const orderRes = await backendAPI.createOrder(phoneNumber, {
-      items: cart.items,
-      total: cart.total,
-      customer_name: session?.name || 'Customer',
-      delivery_type: 'delivery',
-      delivery_address: session?.delivery_address || '',
-    });
-
-    if (!orderRes.success) {
-      return { error: `Failed to create order: ${orderRes.error}` };
-    }
-
-    const order = orderRes.data;
-
-    // Clear cart after successful order
-    await cache.clearUserCart(phoneNumber);
+  }
 
     const message = `
 ╔════════════════════════════════════════════════╗

@@ -6,7 +6,7 @@
 module.exports = {
   BOT_PREFIX: process.env.BOT_PREFIX || '!',
   ADMIN_PHONES: (process.env.ADMIN_PHONES || '').split(',').filter(Boolean),
-  API_BASE_URL: process.env.API_BASE_URL || 'http://localhost:5173',
+  API_BASE_URL: process.env.API_BASE_URL || 'http://localhost:5174',
   SUPABASE_URL: process.env.VITE_SUPABASE_URL,
   SUPABASE_KEY: process.env.VITE_SUPABASE_ANON_KEY,
   BOT_API_PORT: process.env.BOT_API_PORT || 4001,

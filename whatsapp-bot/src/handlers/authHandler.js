@@ -6,6 +6,7 @@
 const backendAPI = require('../api/backendAPI');
 const authMiddleware = require('../middlewares/auth');
 const cache = require('../database/cache');
+const databaseService = require('../database/service');
 const MessageFormatter = require('../utils/messageFormatter');
 const InteractiveMessageBuilder = require('../utils/interactiveMessageBuilder');
 const FlowManager = require('../utils/flowManager');
@@ -65,43 +66,107 @@ class AuthHandler {
   }
 
   /**
-   * !register - Start registration flow
+   * !register - Start registration flow with API sync
    */
   async handleRegisterCommand(args, from, phoneNumber) {
-    const existing = await cache.getUserSession(phoneNumber);
-    if (existing?.authenticated) {
-      return { message: '✓ You\'re already registered! Type !login to continue.' };
-    }
+    try {
+      // Check if user already exists via API
+      const existingUser = await backendAPI.getUser(phoneNumber);
+      if (existingUser.success && existingUser.data) {
+        return InteractiveMessageBuilder.createSuccessCard(
+          'Already Registered',
+          'You\'re already registered! Type !login to continue.'
+        );
+      }
 
-    return InteractiveMessageBuilder.buttonMessage(
-      '👋 Welcome to Smart Bot',
-      'Let\'s get you registered',
-      [
-        { id: 'register_customer', text: '🛍️ As Customer', label: 'Customer' },
-        { id: 'register_merchant', text: '🏪 As Merchant', label: 'Merchant' }
-      ],
-      '━━━━━━━━━━━━━━━'
-    );
+      // Get user name from args or prompt
+      const name = args[0] ? args.join(' ') : null;
+
+      if (name) {
+        // Register with API
+        const registerRes = await backendAPI.registerUser(phoneNumber, name, 'customer', '');
+        
+        if (registerRes.success) {
+          // Cache the session
+          await cache.setUserSession(phoneNumber, {
+            authenticated: false,
+            name: name,
+            created_at: new Date(),
+          });
+
+          logger.info(`User registered via API: ${phoneNumber}`);
+
+          return InteractiveMessageBuilder.buttonMessage(
+            '👋 Welcome to Smart Bot',
+            `Great ${name}! Let's set up your account.`,
+            [
+              { id: 'register_customer', text: '🛍️ As Customer' },
+              { id: 'register_merchant', text: '🏪 As Merchant' }
+            ]
+          );
+        } else {
+          return InteractiveMessageBuilder.createErrorCard('Registration Failed', [registerRes.error]);
+        }
+      }
+
+      // Prompt for name or show role selector
+      return InteractiveMessageBuilder.buttonMessage(
+        '👋 Welcome to Smart Bot',
+        'What would you like to do?',
+        [
+          { id: 'register_customer', text: '🛍️ As Customer' },
+          { id: 'register_merchant', text: '🏪 As Merchant' }
+        ]
+      );
+    } catch (error) {
+      logger.error('Registration error', error);
+      return InteractiveMessageBuilder.createErrorCard('Registration Failed', [error.message]);
+    }
   }
 
   /**
-   * !login - Start login flow
+   * !login - Start login flow with API sync
    */
   async handleLoginCommand(args, from, phoneNumber) {
-    const existing = await cache.getUserSession(phoneNumber);
-    if (existing?.authenticated) {
-      return { message: `✓ Welcome back! You're already logged in.` };
-    }
+    try {
+      // Check API for user
+      const userResult = await backendAPI.getUser(phoneNumber);
+      
+      if (!userResult.success || !userResult.data) {
+        return InteractiveMessageBuilder.createErrorCard(
+          'User Not Found',
+          ['Please register first using !register']
+        );
+      }
 
-    return InteractiveMessageBuilder.buttonMessage(
-      '📱 Login to Smart Bot',
-      'Select your login method',
-      [
-        { id: 'login_otp', text: '📲 OTP Code', label: 'Use OTP' },
-        { id: 'login_phone', text: '📞 Phone Number', label: 'Phone Verify' }
-      ],
-      '━━━━━━━━━━━━━━━'
-    );
+      const user = userResult.data;
+      const existing = await cache.getUserSession(phoneNumber);
+      
+      if (existing?.authenticated) {
+        return InteractiveMessageBuilder.createSuccessCard(
+          'Already Logged In',
+          `Welcome back ${user.name}!`
+        );
+      }
+
+      // Cache session
+      await cache.setUserSession(phoneNumber, {
+        authenticated: true,
+        name: user.name,
+        role: user.role || 'customer',
+        loginTime: new Date(),
+      });
+
+      logger.info(`User logged in: ${phoneNumber}`);
+
+      return InteractiveMessageBuilder.createSuccessCard(
+        `Welcome ${user.name}!`,
+        'You\'re now logged in. Type !help to see available commands.'
+      );
+    } catch (error) {
+      logger.error('Login error', error);
+      return InteractiveMessageBuilder.createErrorCard('Login Failed', [error.message]);
+    }
   }
 
   /**

@@ -6,6 +6,7 @@
 const backendAPI = require('../api/backendAPI');
 const authMiddleware = require('../middlewares/auth');
 const cache = require('../database/cache');
+const databaseService = require('../database/service');
 const MessageFormatter = require('../utils/messageFormatter');
 const InteractiveMessageBuilder = require('../utils/interactiveMessageBuilder');
 const FlowManager = require('../utils/flowManager');

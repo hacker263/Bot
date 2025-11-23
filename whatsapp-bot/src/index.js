@@ -49,13 +49,16 @@ class SmartWhatsAppBot {
     // Configuration
     this.prefix = process.env.BOT_PREFIX || '!';
     this.adminPhone = process.env.ADMIN_PHONE;
-    this.apiBaseUrl = process.env.API_BASE_URL || 'http://localhost:5173';
+    this.apiBaseUrl = process.env.API_BASE_URL || 'http://localhost:5174';
 
     // Caches for performance (4-tier strategy)
     this.sessions = new NodeCache({ stdTTL: 3600 });
     this.carts = new NodeCache({ stdTTL: 7200 });
     this.merchants = new NodeCache({ stdTTL: 1800 });
     this.products = new NodeCache({ stdTTL: 900 });
+
+    // Initialize database service
+    this.databaseService = null;
 
     // Initialize services
     this.initializeServices();
@@ -103,6 +106,17 @@ class SmartWhatsAppBot {
    */
   async startBot() {
     try {
+      // Initialize database first
+      try {
+        const DatabaseConfig = require('./config/database');
+        await DatabaseConfig.initialize();
+        this.databaseService = require('./database/service');
+        console.log(chalk.green('✅ Database initialized successfully'));
+      } catch (error) {
+        console.error(chalk.red('❌ Database initialization error:'), error.message);
+        console.log(chalk.yellow('⚠️  Bot will continue without database sync'));
+      }
+
       const { state, saveCreds } = await useMultiFileAuthState('./auth_info_baileys');
       const { version, isLatest } = await fetchLatestBaileysVersion();
 
@@ -483,19 +497,42 @@ class SmartWhatsAppBot {
   /**
    * Setup Express server for API and Dashboard sync
    */
-  setupExpressServer() {
+  async setupExpressServer() {
     this.app = express();
 
     this.app.use(cors());
     this.app.use(express.json({ limit: '50mb' }));
     this.app.use(express.static(path.join(__dirname, '../../dist')));
 
+    // Initialize database connection
+    try {
+      const DatabaseConfig = require('./config/database');
+      await DatabaseConfig.initialize();
+      this.databaseService = require('./database/service');
+      console.log(chalk.green('✅ Database initialized successfully'));
+    } catch (error) {
+      console.error(chalk.red('❌ Database initialization error:'), error.message);
+      console.log(chalk.yellow('⚠️  Bot will continue without database sync'));
+    }
+
+    // Initialize Dashboard Server
+    const DashboardServer = require('./api/dashboardServer');
+    this.dashboardServer = new DashboardServer();
+
+    // Start Dashboard API
+    this.dashboardServer.app.use('/api/bot', this.app); // Merge bot routes
+    this.dashboardServer.start().catch(err => {
+      console.error('Dashboard server error:', err);
+    });
+
     // Health check
     this.app.get('/api/bot/health', (req, res) => {
       res.json({
         status: this.sock ? 'connected' : 'disconnected',
         uptime: process.uptime(),
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        dashboardUrl: `http://localhost:3000`,
+        databaseConnected: !!this.databaseService
       });
     });
 

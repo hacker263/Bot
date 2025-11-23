@@ -4,6 +4,22 @@
 
 **Status:** ✅ Complete | ⚡ Production Ready | 🧪 Fully Tested | ✅ Handler System Verified
 
+---
+
+## 🚀 **NEW: Complete Bot + Dashboard Integration**
+
+**👉 [START HERE: Bot + Dashboard Quick Start →](./README_INTEGRATION_SETUP.md)**
+
+Everything syncs automatically! WhatsApp Bot ↔ Express API ↔ React Dashboard
+
+```bash
+npm run dev:all    # Starts everything in one command
+```
+
+Then scan WhatsApp QR and start using the bot. All data syncs to dashboard automatically! 🎉
+
+---
+
 **Latest Updates:**
 - ✅ 5 Core Handlers Verified & Tested
 - ✅ 6 Comprehensive Integration Tests (100% passing)
